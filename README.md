@@ -39,6 +39,11 @@ Ghost OSINT Scanner adalah toolkit reconnaissance & vulnerability automation ber
 
 ## Auto Dependency Install
 
+Dependency support os :
+
+- Ubuntu/Debian
+- Kali Linux
+
 Script otomatis install jika belum ada:
 
 - curl
