@@ -56,5 +56,8 @@ Script otomatis install jika belum ada:
 ```bash
 chmod +x ghost_osint_scanner.sh
 ./ghost_osint_scanner.sh
+```
+
+![Screen Capture](https://raw.githubusercontent.com/gagaltotal/ghost-osint-scanner/refs/heads/main/Screenshot%20from%202026-02-06%2023-18-48.png)
 
 ---
