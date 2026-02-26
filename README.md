@@ -33,6 +33,7 @@ Ghost OSINT Scanner adalah toolkit reconnaissance & vulnerability automation ber
 ### Automation
 - Subdomain → Nuclei Mass Scan
 - Parallel Multi Scan
+- Nuclei CVE Scan (Only CVEs)
 - Auto HTML Report
 
 ---

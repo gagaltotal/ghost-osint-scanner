@@ -76,9 +76,24 @@ ip_location(){ read -p "IP/Domain: " t; curl -s "http://ip-api.com/json/$t" | jq
 trace_route(){ read -p "Target: " t; mtr -4 -rwc 1 "$t"; }
 
 subdomain_enum(){
+if [ -n "$1" ]; then
+d="$1"
+else
 read -p "Domain: " d
-curl -s "https://crt.sh/?q=%25.$d&output=json" \
-| jq -r '.[].name_value' | sed 's/\*\.//g' | sort -u | tee subs.txt
+fi
+
+echo "[+] Enumerating subdomains..."
+
+resp=$(curl -s -H "User-Agent: recon" "https://crt.sh/?q=%25.$d&output=json")
+
+echo "$resp" | grep -q "name_value" || {
+echo "[!] crt.sh returned non-JSON (rate limit?)"
+return 1
+}
+
+echo "$resp" | jq -r '.[].name_value' 2>/dev/null \
+| sed 's/\*\.//g' \
+| sort -u | tee subs.txt
 }
 
 wayback_enum(){
@@ -88,23 +103,34 @@ curl -s "https://web.archive.org/cdx/search/cdx?url=*.$d/*&output=text&fl=origin
 }
 
 takeover_check(){
-read -p "Domain: " d
-subdomain_enum >/dev/null
-while read sub; do
-cname=$(dig +short CNAME "$sub")
-ip=$(dig +short "$sub")
+  read -p "Domain: " d
 
-[[ -z "$ip" ]] && echo "[NXDOMAIN] $sub"
+  echo "[+] Checking subdomain takeover..."
 
-if echo "$cname" | grep -Eqi "github.io|herokuapp.com|amazonaws.com|azurewebsites.net|fastly.net"; then
-echo "[CNAME Risk] $sub -> $cname"
-fi
+  subdomain_enum "$d" >/dev/null || {
+  echo "[!] Subdomain enumeration failed"
+  return
+  }
 
-resp=$(curl -s --max-time 5 "$sub")
-echo "$resp" | grep -Eqi "NoSuchBucket|There isn't a GitHub Pages site here|heroku" \
-&& echo "[HTTP Takeover Pattern] $sub"
+  [ -f subs.txt ] || { echo "[!] subs.txt missing"; return; }
 
-done < subs.txt
+  while read -r sub; do
+  [ -z "$sub" ] && continue
+
+  cname=$(dig +short CNAME "$sub" | head -n1)
+  ip=$(dig +short "$sub" | head -n1)
+
+  [[ -z "$ip" ]] && echo "[NXDOMAIN] $sub"
+
+  if echo "$cname" | grep -Eqi "github.io|herokuapp.com|amazonaws.com|azurewebsites.net|fastly.net"; then
+  echo "[CNAME Risk] $sub -> $cname"
+  fi
+
+  resp=$(curl -sL --max-time 5 "http://$sub")
+  echo "$resp" | grep -Eqi "NoSuchBucket|There isn't a GitHub Pages site here|heroku" \
+  && echo "[HTTP Takeover Pattern] $sub"
+
+  done < subs.txt
 }
 
 dir_brute(){
@@ -129,11 +155,29 @@ read -p "Domain: " d
 echo | openssl s_client -connect "$d:443" 2>/dev/null | openssl x509 -noout -dates -issuer -subject
 }
 
-nuclei_scan(){ read -p "URL: " t; nuclei -u "$t"; }
+nuclei_scan(){ 
+  read -p "URL: " t; nuclei -u "$t"; 
+}
+
+nuclei_cve_scan(){
+read -p "URL/Domain: " t
+
+echo "[+] Running CVE-only scan (nuclei)..."
+
+nuclei -u "$t" -tags cve -severity critical,high,medium
+}
 
 subdomain_nuclei_mass(){
 read -p "Domain: " d
-subdomain_enum
+
+subdomain_enum "$d" || {
+echo "[!] Subdomain enum failed"
+return
+}
+
+[ -f subs.txt ] || { echo "[!] subs.txt not found"; return; }
+
+echo "[+] Running nuclei on subdomains..."
 nuclei -l subs.txt
 }
 
@@ -191,7 +235,8 @@ echo -e "${B}
 [14] Nuclei Single Scan
 [15] Subdomain → Nuclei Mass Scan
 [16] Parallel Scan + HTML Report
-[17] Exit
+[17] Nuclei CVE Scan (Only CVEs)
+[18] Exit
 ${N}"
 }
 
@@ -219,7 +264,8 @@ case $c in
 14) nuclei_scan ;;
 15) subdomain_nuclei_mass ;;
 16) parallel_scan ;;
-17) exit 0 ;;
+17) nuclei_cve_scan ;;
+18) exit 0 ;;
 *) echo "Invalid";;
 esac
 pause
