@@ -3,6 +3,7 @@
 B="\e[34m"; G="\e[32m"; R="\e[31m"; N="\e[0m"
 
 PKGS=(curl dnsutils whois nmap jq mtr)
+NUCLEI_UPDATED=false
 
 #======== AUTO INSTALL DEPENDENCIES =========
 auto_install(){
@@ -45,6 +46,17 @@ fi
 echo -e "${G}[+] Dependencies ready.${N}"
 }
 
+update_nuclei_templates(){
+  $NUCLEI_UPDATED && return
+
+  command -v nuclei >/dev/null || return
+
+  echo -e "${G}[+] Updating nuclei templates...${N}"
+  nuclei -update-templates >/dev/null 2>&1
+
+  NUCLEI_UPDATED=true
+}
+
 #======== BANNER FUNCTION =========
 banner(){
 clear
@@ -55,7 +67,7 @@ echo -e "${B}
   ██║   ██║██╔══██║██║   ██║╚════██║   ██║╚════╝██║   ██║╚════██║
   ╚██████╔╝██║  ██║╚██████╔╝███████║   ██║      ╚██████╔╝███████║
    ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝   ╚═╝       ╚═════╝ ╚══════╝
-  Ghost OSINT Scanner - Recon • Enum • Vuln • Report - version 1.0
+  Ghost OSINT Scanner - Recon • Enum • Vuln • Report - version 1.0.1
 ${N}"
 }
 
@@ -156,7 +168,9 @@ echo | openssl s_client -connect "$d:443" 2>/dev/null | openssl x509 -noout -dat
 }
 
 nuclei_scan(){ 
-  read -p "URL: " t; nuclei -u "$t"; 
+  read -p "URL: " t;
+  update_nuclei_templates
+  nuclei -u "$t"; 
 }
 
 nuclei_cve_scan(){
@@ -164,7 +178,32 @@ read -p "URL/Domain: " t
 
 echo "[+] Running CVE-only scan (nuclei)..."
 
+update_nuclei_templates
+
 nuclei -u "$t" -tags cve -severity critical,high,medium
+}
+
+focused_web_vuln_scan(){
+  read -p "URL/Domain: " t
+
+  update_nuclei_templates
+
+  echo -e "${G}[+] Running focused web vulnerability scan...${N}"
+
+  echo -e "\n==== CSRF ===="
+  nuclei -u "$t" -tags csrf
+
+  echo -e "\n==== Open Redirect ===="
+  nuclei -u "$t" -tags redirect
+
+  echo -e "\n==== SSRF ===="
+  nuclei -u "$t" -tags ssrf
+
+  echo -e "\n==== XSS ===="
+  nuclei -u "$t" -tags xss
+
+  echo -e "\n==== SQL Injection ===="
+  nuclei -u "$t" -tags sqli
 }
 
 subdomain_nuclei_mass(){
@@ -178,6 +217,7 @@ return
 [ -f subs.txt ] || { echo "[!] subs.txt not found"; return; }
 
 echo "[+] Running nuclei on subdomains..."
+update_nuclei_templates
 nuclei -l subs.txt
 }
 
@@ -208,6 +248,7 @@ done < "$wl"
 
 {
 echo "=== NUCLEI ==="
+update_nuclei_templates
 nuclei -u "$t"
 } >> "$R" &
 
@@ -236,7 +277,8 @@ echo -e "${B}
 [15] Subdomain → Nuclei Mass Scan
 [16] Parallel Scan + HTML Report
 [17] Nuclei CVE Scan (Only CVEs)
-[18] Exit
+[18] Focused Web Vuln Scan (XSS, SQLi, SSRF, etc)
+[19] Exit
 ${N}"
 }
 
@@ -265,7 +307,8 @@ case $c in
 15) subdomain_nuclei_mass ;;
 16) parallel_scan ;;
 17) nuclei_cve_scan ;;
-18) exit 0 ;;
+18) focused_web_vuln_scan ;;
+19) exit 0 ;;
 *) echo "Invalid";;
 esac
 pause
